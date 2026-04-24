@@ -23,19 +23,19 @@
 
 ## Description
 
-Сервис выполняет роль WebSocket-шлюза для счетчиков. Он:
-- валидирует `access_token` через внешний auth-сервис;
-- держит WebSocket-подключения и отправляет обновления счетчиков;
-- читает события из Kafka топика `ws_events`;
-- отдает начальные значения счетчиков через REST API.
+This service works as a WebSocket gateway for counters. It:
+- validates `access_token` through an external auth service;
+- keeps WebSocket connections and pushes counter updates;
+- consumes events from the Kafka topic `ws_events`;
+- returns initial counter values through REST API.
 
 ## Environment
 
-Скопируйте `.env.example` в `.env` и заполните значения:
-- `AUTH_SERVICE_VALIDATE_URL` - полный URL валидации access_token;
-- `KAFKA_BROKERS` - список брокеров Kafka через запятую;
-- `KAFKA_TOPIC_WS_EVENTS` - топик входящих событий (`ws_events` по умолчанию);
-- `DATABASE_URL` или параметры `DB_*` для PostgreSQL.
+Copy `.env.example` to `.env` and fill in the values:
+- `AUTH_SERVICE_VALIDATE_URL` - full URL for access token validation;
+- `KAFKA_BROKERS` - comma-separated list of Kafka brokers;
+- `KAFKA_TOPIC_WS_EVENTS` - incoming events topic (`ws_events` by default);
+- `DATABASE_URL` or `DB_*` PostgreSQL parameters.
 
 ## REST API
 
@@ -44,13 +44,13 @@
 Headers:
 - `Authorization: Bearer <access_token>`
 
-Поведение:
-- токен валидируется через auth-сервис;
-- `userId` берется из payload токена;
-- `clientType` берется из query, а если query не передан - из payload токена;
-- возвращаются счетчики из таблицы `counters` по связке (`userId`, `clientType`).
+Behavior:
+- token is validated through the auth service;
+- `userId` is taken from token payload;
+- `clientType` is taken from query, and if query is not provided - from token payload;
+- counters are returned from the `counters` table for (`userId`, `clientType`).
 
-Пример ответа:
+Response example:
 ```json
 {
   "userId": "u-1",
@@ -65,13 +65,44 @@ Headers:
 Swagger UI:
 - `http://<host>:<port>/api/docs`
 
+### `POST /counters/reset`
+
+Headers:
+- `Authorization: Bearer <access_token>`
+- `Content-Type: application/json`
+
+Request body:
+```json
+{
+  "userId": "u-1",
+  "clientType": "employee",
+  "moduleType": "integration"
+}
+```
+
+Behavior:
+- finds one row by (`userId`, `clientType`, `moduleType`);
+- sets `number` to `0`;
+- sets `data` to `null`.
+
+Response example:
+```json
+{
+  "userId": "u-1",
+  "clientType": "employee",
+  "moduleType": "integration",
+  "number": 0,
+  "data": null
+}
+```
+
 ## WebSocket API
 
 Endpoint:
 - `ws://<host>:<port>/ws?access_token=<token>&client_type=employee|admin`
-- `client_type` можно не передавать, если auth-сервис уже возвращает `clientType` в payload токена.
+- `client_type` can be omitted if auth service already returns `clientType` in token payload.
 
-После успешной валидации токена клиент получает:
+After successful token validation, the client receives:
 ```json
 {
   "connection": "ok",
@@ -81,30 +112,31 @@ Endpoint:
 ```
 
 Heartbeat:
-- ping/pong реализован через настройки Socket.IO (`pingInterval ~25s`).
+- ping/pong is handled by Socket.IO settings (`pingInterval ~25s`).
 
-Серверные события:
-- `counter:update`
+Server events:
+- `counter:update` - persisted counter update (`valueType = "counter"`)
+- `text:update` - non-persistent text payload (`valueType = "text"`)
 
-Соединения:
-- сервер поддерживает много одновременных подключений;
-- один и тот же пользователь может иметь несколько активных сокетов одновременно (например, несколько вкладок/устройств), обновления отправляются во все его подключения нужного `clientType`.
+Connections:
+- server supports multiple concurrent connections;
+- the same user can have several active sockets at the same time (for example, multiple tabs/devices), updates are sent to all connections for the required `clientType`.
 
 ## Frontend WebSocket integration
 
-Ниже пример для фронта на `socket.io-client`.
+Below is an example for frontend integration using `socket.io-client`.
 
-1) Установите клиент:
+1) Install client:
 ```bash
 npm install socket.io-client
 ```
 
-2) Подключитесь к WS endpoint:
+2) Connect to the WS endpoint:
 ```ts
 import { io } from 'socket.io-client';
 
 const accessToken = '<jwt>';
-const clientType = 'employee'; // или 'admin'
+const clientType = 'employee'; // or 'admin'
 
 const socket = io('http://localhost:8082', {
   path: '/ws',
@@ -113,7 +145,7 @@ const socket = io('http://localhost:8082', {
     access_token: accessToken,
     client_type: clientType,
   },
-  // backoff: 1s, 2s, 5s, 10s, 20s (максимум 20s)
+  // backoff: 1s, 2s, 5s, 10s, 20s (max 20s)
   reconnection: true,
   reconnectionAttempts: Infinity,
   reconnectionDelay: 1000,
@@ -122,22 +154,27 @@ const socket = io('http://localhost:8082', {
 });
 ```
 
-3) Обработайте события:
+3) Handle events:
 ```ts
 socket.on('connect', () => {
   console.log('WS connected:', socket.id);
 });
 
 socket.on('connection', (payload) => {
-  // Успешный handshake:
+  // Successful handshake:
   // { connection: 'ok', heartbeatIntervalMs: 25000, reconnectBackoffMs: [...] }
   console.log('Handshake payload:', payload);
 });
 
 socket.on('counter:update', (payload) => {
-  // { userId, clientType, moduleType, number }
+  // { userId, companyId, valueType: 'counter', clientType, moduleType, number, data? }
   console.log('Counter update:', payload);
-  // обновите state/store (Redux/Pinia/Zustand/etc.)
+  // update your state/store (Redux/Pinia/Zustand/etc.)
+});
+
+socket.on('text:update', (payload) => {
+  // { userId, companyId, valueType: 'text', clientType, moduleType, data }
+  console.log('Text update:', payload);
 });
 
 socket.on('disconnect', (reason) => {
@@ -150,112 +187,142 @@ socket.on('connect_error', (error) => {
 ```
 
 4) Heartbeat:
-- ping/pong происходит автоматически на уровне Socket.IO;
-- на сервере `pingInterval` установлен примерно в `25s`.
+- ping/pong is handled automatically by Socket.IO;
+- server `pingInterval` is set to about `25s`.
 
-5) Важно:
-- если токен невалидный, сервер разорвет соединение;
-- для пользователя с несколькими вкладками все вкладки получат одинаковое `counter:update`;
-- чтобы закрыть соединение при выходе пользователя, вызывайте `socket.disconnect()`.
+5) Important:
+- if token is invalid, server closes the connection;
+- for a user with multiple tabs, all tabs will receive the same `counter:update`;
+- to close the connection on user logout, call `socket.disconnect()`.
 
-Пример payload:
+Payload example:
 ```json
 {
   "userId": "u-1",
+  "companyId": "4fbe5fd8-e9ec-4fd3-97a8-8d31edfa0678",
+  "valueType": "counter",
   "clientType": "employee",
   "moduleType": "integration",
-  "number": 10
+  "number": 10,
+  "data": {
+    "status": "approved",
+    "source": "risk-check"
+  }
 }
 ```
 
 ## Kafka payload
 
-Топик: `ws_events`
+Topic: `ws_events`
 
-Сообщение:
+Message:
 ```json
 {
   "userId": "u-1",
-  "users": [],
+  "users": ["u-1", "u-2"],
+  "companyId": "4fbe5fd8-e9ec-4fd3-97a8-8d31edfa0678",
+  "valueType": "counter",
+  "moduleType": "integration",
+  "clientType": "employee",
+  "data": {
+    "status": "approved",
+    "entityId": "risk-object-17"
+  }
+}
+```
+
+Examples:
+
+`counter` event for one user (`userId`):
+```json
+{
+  "userId": "u-1",
+  "companyId": "4fbe5fd8-e9ec-4fd3-97a8-8d31edfa0678",
+  "valueType": "counter",
   "moduleType": "integration",
   "clientType": "employee"
 }
 ```
 
-Логика обработки:
-- если `users` не пустой, обновляются все пользователи из `users`;
-- если `users` пустой и заполнен `userId`, обновляется только один пользователь;
-- `number` всегда увеличивается на `+1` для (`userId`, `clientType`, `moduleType`);
-- после обновления БД событие `counter:update` отправляется в WebSocket-комнаты соответствующих пользователей.
-
-## Project setup
-
-```bash
-$ npm install
+`counter` event for multiple users (`users`):
+```json
+{
+  "users": ["u-1", "u-2", "u-3"],
+  "companyId": "4fbe5fd8-e9ec-4fd3-97a8-8d31edfa0678",
+  "valueType": "counter",
+  "moduleType": "risk_object",
+  "clientType": "admin",
+  "data": {
+    "status": "created",
+    "entityId": "risk-object-22"
+  }
+}
 ```
 
-## Compile and run the project
-
-```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+`text` event for one user (`data` is required and not persisted):
+```json
+{
+  "userId": "u-1",
+  "companyId": "4fbe5fd8-e9ec-4fd3-97a8-8d31edfa0678",
+  "valueType": "text",
+  "moduleType": "integration",
+  "clientType": "employee",
+  "data": {
+    "title": "New integration alert",
+    "message": "Connection requires re-authorization"
+  }
+}
 ```
 
-## Run tests
-
-```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+`text` event for multiple users:
+```json
+{
+  "users": ["u-10", "u-11"],
+  "companyId": "7bd2ce0c-b857-4f8a-8939-84845cd6dd8f",
+  "valueType": "text",
+  "moduleType": "risk_object",
+  "clientType": "admin",
+  "data": {
+    "title": "Review required",
+    "message": "Risk object #501 needs approval"
+  }
+}
 ```
 
-## Deployment
+Processing logic:
+- if `users` is not empty, all users from `users` are updated;
+- if `users` is empty and `userId` is provided, only one user is updated;
+- `companyId` is required and must be a UUID;
+- `valueType` is required and must be either `counter` or `text`;
+- for `valueType = counter`: `number` is incremented by `+1` for (`userId`, `companyId`, `clientType`, `moduleType`);
+- for `valueType = counter`: `data` is optional; if present, it is saved to DB and sent in `counter:update`;
+- for `valueType = text`: payload is not saved to DB and is sent immediately to clients as `text:update`; `data` is required.
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+## Database schema
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+The service uses PostgreSQL and stores counters in the `counters` table.
 
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
-```
+### Table: `counters`
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+| Column | Type | Nullable | Description |
+|---|---|---|---|
+| `id` | `serial` / `int` | no | Primary key |
+| `user_id` | `varchar` | no | Target user identifier |
+| `client_type` | `varchar` | no | Client scope (`employee` or `admin`) |
+| `module_type` | `varchar` | no | Module scope (for example `integration`, `risk_object`) |
+| `company_id` | `uuid` | no | Company scope from Kafka message |
+| `number` | `int` | no | Counter value |
+| `data` | `jsonb` | yes | Optional payload from Kafka event |
 
-## Resources
+### Constraints
 
-Check out a few resources that may come in handy when working with NestJS:
+- Primary key: `id`
+- Unique constraint: `uq_counters_scope` on (`user_id`, `client_type`, `module_type`, `company_id`)
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+### Update rules
 
-## Support
+- Kafka event with `valueType = counter` increments `number` by `+1` for the matching scope row.
+- If `data` is present in a `counter` event, `data` is saved/updated in the same row.
+- Kafka event with `valueType = text` is not persisted and is emitted directly to WebSocket clients.
+- `POST /counters/reset` sets `number = 0` and `data = null` for the selected (`userId`, `clientType`, `moduleType`) row.
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).

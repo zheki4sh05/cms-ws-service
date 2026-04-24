@@ -20,6 +20,8 @@ import { WsEventMessage } from './types/ws-event-message.type';
 export class KafkaEventsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(KafkaEventsService.name);
   private consumer: Consumer | null = null;
+  private static readonly UUID_V4_REGEX =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
   constructor(
     private readonly configService: ConfigService,
@@ -108,13 +110,36 @@ export class KafkaEventsService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
+    this.logger.debug(
+      `Processing ws_events message valueType=${parsed.valueType}, users=${targetUsers.length}, moduleType=${parsed.moduleType}, clientType=${parsed.clientType}`,
+    );
+
+    if (parsed.valueType === 'text') {
+      this.wsGateway.emitTextUpdate(
+        targetUsers,
+        parsed.clientType,
+        parsed.companyId,
+        parsed.moduleType,
+        parsed.data ?? {},
+      );
+      this.logger.log(
+        `Handled text ws event for ${targetUsers.length} user(s) without DB update`,
+      );
+      return;
+    }
+
     const updatedCounters = await this.countersService.incrementCountersByEvent(
       targetUsers,
       parsed.moduleType,
       parsed.clientType,
+      parsed.companyId,
+      parsed.data,
     );
 
     this.wsGateway.emitCounterUpdate(updatedCounters);
+    this.logger.log(
+      `Handled counter ws event and updated ${updatedCounters.length} counter row(s)`,
+    );
   }
 
   private isWsEventMessage(payload: unknown): payload is WsEventMessage {
@@ -127,6 +152,9 @@ export class KafkaEventsService implements OnModuleInit, OnModuleDestroy {
     const clientType = message.clientType;
     const users = message.users;
     const userId = message.userId;
+    const companyId = message.companyId;
+    const valueType = message.valueType;
+    const data = message.data;
 
     if (
       typeof moduleType !== 'string' ||
@@ -142,6 +170,10 @@ export class KafkaEventsService implements OnModuleInit, OnModuleDestroy {
       return false;
     }
 
+    if (valueType !== 'counter' && valueType !== 'text') {
+      return false;
+    }
+
     if (users !== undefined) {
       if (
         !Array.isArray(users) ||
@@ -152,6 +184,24 @@ export class KafkaEventsService implements OnModuleInit, OnModuleDestroy {
     }
 
     if (userId !== undefined && (typeof userId !== 'string' || userId.length === 0)) {
+      return false;
+    }
+
+    if (
+      typeof companyId !== 'string' ||
+      !KafkaEventsService.UUID_V4_REGEX.test(companyId)
+    ) {
+      return false;
+    }
+
+    if (
+      data !== undefined &&
+      (!data || typeof data !== 'object' || Array.isArray(data))
+    ) {
+      return false;
+    }
+
+    if (valueType === 'text' && data === undefined) {
       return false;
     }
 

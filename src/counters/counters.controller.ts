@@ -1,7 +1,10 @@
 import {
   BadRequestException,
+  Body,
   Controller,
   Get,
+  NotFoundException,
+  Post,
   Query,
   Req,
   UseGuards,
@@ -18,6 +21,7 @@ import {
 import { AccessTokenGuard } from '../auth/access-token.guard';
 import type { AuthenticatedRequest } from '../auth/interfaces/authenticated-request.interface';
 import { GetInitialCountersQuery } from './dto/get-initial-counters.query';
+import { ResetCounterDto } from './dto/reset-counter.dto';
 import { CountersService } from './counters.service';
 
 @ApiTags('Counters')
@@ -68,6 +72,39 @@ export class CountersController {
         moduleType: counter.moduleType,
         number: counter.number,
       })),
+    };
+  }
+
+  @ApiOperation({
+    summary: 'Reset one counter to zero',
+  })
+  @ApiOkResponse({
+    description: 'Counter was reset successfully',
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Token is missing or invalid',
+  })
+  @Post('reset')
+  async resetCounter(
+    @Body(new ValidationPipe({ transform: true }))
+    body: ResetCounterDto,
+  ) {
+    const counter = await this.countersService.resetCounterByScope(
+      body.userId,
+      body.clientType,
+      body.moduleType,
+    );
+
+    if (!counter) {
+      throw new NotFoundException('Counter not found by provided scope');
+    }
+
+    return {
+      userId: counter.userId,
+      clientType: counter.clientType,
+      moduleType: counter.moduleType,
+      number: counter.number,
+      data: counter.data,
     };
   }
 }
