@@ -24,7 +24,7 @@
 ## Description
 
 This service works as a WebSocket gateway for counters. It:
-- validates `access_token` through an external auth service;
+- validates `token` through an external auth service;
 - keeps WebSocket connections and pushes counter updates;
 - consumes events from the Kafka topic `ws_events`;
 - returns initial counter values through REST API.
@@ -32,7 +32,7 @@ This service works as a WebSocket gateway for counters. It:
 ## Environment
 
 Copy `.env.example` to `.env` and fill in the values:
-- `AUTH_SERVICE_VALIDATE_URL` - full URL for access token validation;
+- `AUTH_SERVICE_VALIDATE_URL` - full URL for token validation (for example `http://localhost:9091/auth/validate`);
 - `KAFKA_BROKERS` - comma-separated list of Kafka brokers;
 - `KAFKA_TOPIC_WS_EVENTS` - incoming events topic (`ws_events` by default);
 - `DATABASE_URL` or `DB_*` PostgreSQL parameters.
@@ -45,7 +45,7 @@ Headers:
 - `Authorization: Bearer <access_token>`
 
 Behavior:
-- token is validated through the auth service;
+- token is validated through auth service request `GET <AUTH_SERVICE_VALIDATE_URL>?token=<token>` and must return `true`;
 - `userId` is taken from token payload;
 - `clientType` is taken from query, and if query is not provided - from token payload;
 - counters are returned from the `counters` table for (`userId`, `clientType`).
@@ -99,7 +99,7 @@ Response example:
 ## WebSocket API
 
 Endpoint:
-- `ws://<host>:<port>/ws?access_token=<token>&client_type=employee|admin`
+- `ws://<host>:<port>/ws?token=<token>&client_type=employee|admin`
 - `client_type` can be omitted if auth service already returns `clientType` in token payload.
 
 After successful token validation, the client receives:
@@ -142,7 +142,7 @@ const socket = io('http://localhost:8082', {
   path: '/ws',
   transports: ['websocket'],
   query: {
-    access_token: accessToken,
+    token: accessToken,
     client_type: clientType,
   },
   // backoff: 1s, 2s, 5s, 10s, 20s (max 20s)

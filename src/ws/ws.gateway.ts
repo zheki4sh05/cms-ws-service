@@ -61,7 +61,7 @@ export class WsGateway
     try {
       const token = this.extractToken(client);
       if (!token) {
-        throw new UnauthorizedException('access_token is required');
+        throw new UnauthorizedException('token is required');
       }
 
       const user = await this.authService.validateAccessToken(token);
@@ -151,14 +151,25 @@ export class WsGateway
   }
 
   private extractToken(client: Socket): string | null {
-    const queryToken = client.handshake.query.access_token;
+    const queryToken = client.handshake.query.token;
     if (typeof queryToken === 'string' && queryToken.length > 0) {
       return queryToken;
     }
 
-    const authToken = client.handshake.auth.access_token;
+    const authToken = client.handshake.auth.token;
     if (typeof authToken === 'string' && authToken.length > 0) {
       return authToken;
+    }
+
+    // Backward compatibility for older clients.
+    const legacyQueryToken = client.handshake.query.access_token;
+    if (typeof legacyQueryToken === 'string' && legacyQueryToken.length > 0) {
+      return legacyQueryToken;
+    }
+
+    const legacyAuthToken = client.handshake.auth.access_token;
+    if (typeof legacyAuthToken === 'string' && legacyAuthToken.length > 0) {
+      return legacyAuthToken;
     }
 
     return null;
