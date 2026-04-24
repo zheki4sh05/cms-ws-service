@@ -13,9 +13,21 @@ import { Counter } from '../counters/entities/counter.entity';
 
 type CounterUpdatePayload = {
   userId: string;
+  companyId: string;
+  valueType: 'counter';
   clientType: string;
   moduleType: string;
   number: number;
+  data?: Record<string, unknown>;
+};
+
+type TextUpdatePayload = {
+  userId: string;
+  companyId: string;
+  valueType: 'text';
+  clientType: string;
+  moduleType: string;
+  data: Record<string, unknown>;
 };
 
 @WebSocketGateway({
@@ -99,14 +111,43 @@ export class WsGateway
     for (const counter of counters) {
       const payload: CounterUpdatePayload = {
         userId: counter.userId,
+        companyId: counter.companyId,
+        valueType: 'counter',
         clientType: counter.clientType,
         moduleType: counter.moduleType,
         number: counter.number,
       };
+      if (counter.data) {
+        payload.data = counter.data;
+      }
       this.server
         .to(this.getUserRoom(counter.userId, counter.clientType))
         .emit('counter:update', payload);
     }
+  }
+
+  emitTextUpdate(
+    userIds: string[],
+    clientType: ClientType,
+    companyId: string,
+    moduleType: string,
+    data: Record<string, unknown>,
+  ): void {
+    const uniqueUserIds = [...new Set(userIds)].filter(Boolean);
+    for (const userId of uniqueUserIds) {
+      const payload: TextUpdatePayload = {
+        userId,
+        companyId,
+        valueType: 'text',
+        clientType,
+        moduleType,
+        data,
+      };
+      this.server.to(this.getUserRoom(userId, clientType)).emit('text:update', payload);
+    }
+    this.logger.debug(
+      `Emitted text:update for ${uniqueUserIds.length} user(s), clientType=${clientType}, moduleType=${moduleType}`,
+    );
   }
 
   private extractToken(client: Socket): string | null {

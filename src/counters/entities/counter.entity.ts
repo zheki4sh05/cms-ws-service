@@ -2,7 +2,7 @@ import { Column, Entity, PrimaryGeneratedColumn, Unique } from 'typeorm';
 import type { ClientType, ModuleType } from '../../common/types/domain.types';
 
 @Entity('counters')
-@Unique('uq_counters_scope', ['userId', 'clientType', 'moduleType'])
+@Unique('uq_counters_scope', ['userId', 'clientType', 'moduleType', 'companyId'])
 export class Counter {
   @PrimaryGeneratedColumn()
   id: number;
@@ -16,6 +16,12 @@ export class Counter {
   @Column({ name: 'module_type', type: 'varchar' })
   moduleType: ModuleType;
 
+  @Column({ name: 'company_id', type: 'uuid' })
+  companyId: string;
+
   @Column({ type: 'int', default: 0 })
   number: number;
+
+  @Column({ type: 'jsonb', nullable: true })
+  data: Record<string, unknown> | null;
 }
