@@ -115,10 +115,16 @@ export class KafkaEventsService implements OnModuleInit, OnModuleDestroy {
     );
 
     if (parsed.valueType === 'text') {
+      const { entityId } = parsed;
+      if (!entityId) {
+        this.logger.warn('Skipped text ws_events message without entityId');
+        return;
+      }
       this.wsGateway.emitTextUpdate(
         targetUsers,
         parsed.clientType,
         parsed.companyId,
+        entityId,
         parsed.moduleType,
         parsed.data ?? {},
       );
@@ -154,6 +160,7 @@ export class KafkaEventsService implements OnModuleInit, OnModuleDestroy {
     const userId = message.userId;
     const companyId = message.companyId;
     const valueType = message.valueType;
+    const entityId = message.entityId;
     const data = message.data;
 
     if (
@@ -202,6 +209,13 @@ export class KafkaEventsService implements OnModuleInit, OnModuleDestroy {
     }
 
     if (valueType === 'text' && data === undefined) {
+      return false;
+    }
+
+    if (
+      valueType === 'text' &&
+      (typeof entityId !== 'string' || entityId.length === 0)
+    ) {
       return false;
     }
 

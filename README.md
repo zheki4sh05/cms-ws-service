@@ -173,7 +173,7 @@ socket.on('counter:update', (payload) => {
 });
 
 socket.on('text:update', (payload) => {
-  // { userId, companyId, valueType: 'text', clientType, moduleType, data }
+  // { userId, companyId, valueType: 'text', entityId, clientType, moduleType, data }
   console.log('Text update:', payload);
 });
 
@@ -259,12 +259,13 @@ Examples:
 }
 ```
 
-`text` event for one user (`data` is required and not persisted):
+`text` event for one user (`entityId` and `data` are required and not persisted):
 ```json
 {
   "userId": "u-1",
   "companyId": "4fbe5fd8-e9ec-4fd3-97a8-8d31edfa0678",
   "valueType": "text",
+  "entityId": "integration-connection-42",
   "moduleType": "integration",
   "clientType": "employee",
   "data": {
@@ -280,6 +281,7 @@ Examples:
   "users": ["u-10", "u-11"],
   "companyId": "7bd2ce0c-b857-4f8a-8939-84845cd6dd8f",
   "valueType": "text",
+  "entityId": "risk-object-501",
   "moduleType": "risk_object",
   "clientType": "admin",
   "data": {
@@ -296,7 +298,7 @@ Processing logic:
 - `valueType` is required and must be either `counter` or `text`;
 - for `valueType = counter`: `number` is incremented by `+1` for (`userId`, `companyId`, `clientType`, `moduleType`);
 - for `valueType = counter`: `data` is optional; if present, it is saved to DB and sent in `counter:update`;
-- for `valueType = text`: payload is not saved to DB and is sent immediately to clients as `text:update`; `data` is required.
+- for `valueType = text`: payload is not saved to DB and is sent immediately to clients as `text:update`; `entityId` and `data` are required.
 
 ## Database schema
 

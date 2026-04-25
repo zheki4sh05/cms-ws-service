@@ -25,6 +25,7 @@ type TextUpdatePayload = {
   userId: string;
   companyId: string;
   valueType: 'text';
+  entityId: string;
   clientType: string;
   moduleType: string;
   data: Record<string, unknown>;
@@ -130,6 +131,7 @@ export class WsGateway
     userIds: string[],
     clientType: ClientType,
     companyId: string,
+    entityId: string,
     moduleType: string,
     data: Record<string, unknown>,
   ): void {
@@ -139,6 +141,7 @@ export class WsGateway
         userId,
         companyId,
         valueType: 'text',
+        entityId,
         clientType,
         moduleType,
         data,

@@ -7,6 +7,7 @@ export type WsEventMessage = {
   users?: string[];
   companyId: string;
   valueType: WsEventValueType;
+  entityId?: string;
   moduleType: ModuleType;
   clientType: ClientType;
   data?: Record<string, unknown>;
