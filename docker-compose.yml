@@ -1,0 +1,15 @@
+services:
+  cms-ws-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cms-ws-service
+    ports:
+      - "${PORT:-8082}:${PORT:-8082}"
+    env_file:
+      - .env
+    environment:
+      PORT: ${PORT:-8082}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
